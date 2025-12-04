@@ -20,6 +20,7 @@ body{margin:0;font-family:"Microsoft YaHei",Arial,Helvetica,sans-serif;backgroun
 .btn-bar button{margin-left:8px;padding:8px 20px;font-size:15px;border:none;border-radius:6px;cursor:pointer;color:#fff}
 #printBtn{background:var(--main)}
 #pdfBtn{background:#27ae60}
+#clearBtn{background:#e67e22}
 table{width:100%;border-collapse:collapse;font-size:15px;letter-spacing:.3px}
 th,td{padding:13px 10px;text-align:center;border:1.2px solid var(--line);line-height:1.45;vertical-align:middle}
 thead{background:var(--main);color:#fff;font-weight:600}
@@ -47,12 +48,11 @@ tbody tr:hover{background:#eef7ff}
 .rand4{background:#d5e8d4;color:#2e7d32}
 .diff{background:#fff3cd;outline:2px solid #ffc107}
 .editing{background:#fffbe6;font-weight:600}
+.week-label{font-size:0.8em;color:#666;margin-right:4px}
 
 @media print{
-  /* ---------- 关键：让打印内容刚好撑满一页，避免空白第二页 ---------- */
   html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden;}
   body{display:block;}
-
   @page{margin:12mm;size:A4 landscape}
   .card{box-shadow:none;padding:0;margin:0;border-radius:0}
   .toolbar{display:none}
@@ -81,6 +81,7 @@ tbody tr:hover{background:#eef7ff}
       <button class="fileBtn" onclick="importJSON()">导入数据</button>
     </div>
     <div class="btn-bar">
+      <button id="clearBtn" onclick="clearData()">清空</button>
       <button id="printBtn" onclick="printWarn()">打印</button>
       <button id="pdfBtn" onclick="printWarn()">导出PDF</button>
     </div>
@@ -143,6 +144,11 @@ function cls(s){
   return userMap[s];
 }
 
+/* ---------- 去掉（单）（双）前缀 ---------- */
+function stripLabel(str){
+  return str.replace(/^[(（](?:单|双)[)）]/,'');
+}
+
 /* ---------- 渲染 ---------- */
 function render(){
   const tb=document.getElementById('tbody');
@@ -160,7 +166,7 @@ function render(){
         if(s===d){
           td.innerHTML=`<span class="${cls(s)}">${s}</span>`;
         }else{
-          td.innerHTML=`<div class="diff">${wrap(s)}<br>${wrap(d)}</div>`;
+          td.innerHTML=`<div class="diff">${wrapWithLabel(s,'单')}<br>${wrapWithLabel(d,'双')}</div>`;
           td.classList.add('diff');
         }
         td.contentEditable=true;
@@ -169,6 +175,10 @@ function render(){
       }
     });
   });
+}
+
+function wrapWithLabel(txt,label){
+  return `<span class="${cls(txt)}"><span class="week-label">(${label})</span>${txt}</span>`;
 }
 
 function wrap(txt){
@@ -191,20 +201,33 @@ function editTitle(){
 function edit(e){
   const td=e.currentTarget;
   td.classList.add('editing');
-  td.innerText=td.innerText;
+  const spans=td.querySelectorAll('span');
+  if(spans.length===1){
+    td.innerText=stripLabel(spans[0].textContent);
+  }else if(spans.length===2){
+    const parts=Array.from(spans).map(s=>stripLabel(s.textContent));
+    td.innerText=parts.join('\n');
+  }else{
+    td.innerText=stripLabel(td.innerText);
+  }
   td.focus();
-  window.getSelection().selectAllChildren(td);
 }
+
 function save(e){
   const td=e.currentTarget;
   td.classList.remove('editing');
-  const txt=td.innerText.trim();
+  let txt=td.innerText.trim();
   if(txt.includes('\n')){
     td.classList.add('diff');
-    const parts=txt.split('\n').map(p=>wrap(p.trim())).join('<br>');
+    const parts=txt.split('\n').map((p,i)=>{
+      p=stripLabel(p.trim());
+      const label=i===0?'单':'双';
+      return wrapWithLabel(p,label);
+    }).join('<br>');
     td.innerHTML=`<div class="diff">${parts}</div>`;
   }else{
     td.classList.remove('diff');
+    txt=stripLabel(txt);
     td.innerHTML=wrap(txt);
   }
   updateRawData();
@@ -220,10 +243,11 @@ function updateRawData(){
       if(c===0) return;
       const spans=td.querySelectorAll('span');
       if(spans.length===1){
-        single[r][c]=double[r][c]=spans[0].textContent;
+        const txt=stripLabel(spans[0].textContent);
+        single[r][c]=double[r][c]=txt;
       }else if(spans.length===2){
-        single[r][c]=spans[0].textContent;
-        double[r][c]=spans[1].textContent;
+        single[r][c]=stripLabel(spans[0].textContent);
+        double[r][c]=stripLabel(spans[1].textContent);
       }
     });
   });
@@ -249,6 +273,21 @@ function delRow(){
   if(confirm("确定删除？")){single.splice(pos,1);double.splice(pos,1);render();autoSave();}
 }
 
+/* ---------- 清空数据 ---------- */
+function clearData(){
+  if(!confirm("确定清空所有科目数据吗？（行列结构将保留）")) return;
+  single.forEach((row,r)=>{
+    if(r>0 && !/上午|下午/.test(row[0])){
+      for(let c=1;c<row.length;c++){
+        single[r][c]="";
+        double[r][c]="";
+      }
+    }
+  });
+  render();
+  autoSave();
+}
+
 /* ---------- 自动保存 / 自动读取 ---------- */
 function autoSave(){
   const data={title:document.getElementById('title').textContent,single,double,userMap};
@@ -256,7 +295,7 @@ function autoSave(){
 }
 function autoLoad(){
   const raw=localStorage.getItem('scheduleAutoSave');
-  if(!raw) return;
+  if(!raw){render();return;}
   try{
     const data=JSON.parse(raw);
     if(data.single && data.double){
