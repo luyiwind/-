@@ -1,0 +1,317 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<title>课程表·所见即所打（可编辑·可导出导入·自动上色·自动保存）</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+:root{
+  --main: #2980b9;
+  --gray: #f5f7fa;
+  --line: #d0d0d0;
+}
+body{margin:0;font-family:"Microsoft YaHei",Arial,Helvetica,sans-serif;background:linear-gradient(135deg,#e9ecef 0%,var(--gray) 100%);min-height:100vh;display:flex;align-items:center;justify-content:center;padding:20px}
+.card{width:100%;max-width:1200px;background:#fff;border-radius:16px;box-shadow:0 8px 32px rgba(0,0,0,.08);padding:35px 40px 45px}
+#title{margin:0 0 20px;text-align:center;font-size:30px;color:#2c3e50;cursor:pointer}
+#title:hover{text-decoration:underline}
+.toolbar{display:flex;align-items:center;justify-content:space-between;margin-bottom:25px;flex-wrap:wrap;gap:8px}
+.rowCtrl button{background:#7f8c8d;color:#fff;padding:8px 18px;font-size:15px;border:none;border-radius:6px;cursor:pointer}
+.fileBtn{background:#8e44ad;color:#fff}
+.btn-bar button{margin-left:8px;padding:8px 20px;font-size:15px;border:none;border-radius:6px;cursor:pointer;color:#fff}
+#printBtn{background:var(--main)}
+#pdfBtn{background:#27ae60}
+table{width:100%;border-collapse:collapse;font-size:15px;letter-spacing:.3px}
+th,td{padding:13px 10px;text-align:center;border:1.2px solid var(--line);line-height:1.45;vertical-align:middle}
+thead{background:var(--main);color:#fff;font-weight:600}
+tbody tr:nth-child(even){background:#f9fbfd}
+tbody tr:hover{background:#eef7ff}
+.period{background:#ecf0f1;font-weight:600;color:#34495e}
+.yu{background:#ffe0e0;color:#c0392b}
+.shu{background:#e0f0ff;color:#2980b9}
+.ying{background:#fff2cc;color:#b8860b}
+.ti{background:#d5f5e3;color:#27ae60}
+.mei{background:#f9e6ff;color:#8e44ad}
+.lao{background:#fff0e0;color:#e67e22}
+.ban{background:#eaf2f8;color:#5d6d7e}
+.dao{background:#fdebd0;color:#a84300}
+.ke{background:#e0f7fa;color:#00838f}
+.sheng{background:#fce4ec;color:#c2185b}
+.duo{background:#d5f5e3;color:#1e8449}
+.lan{background:#d5f5e3;color:#1e8449}
+.yun{background:#d5f5e3;color:#27ae60}
+.chuang{background:#e8f5e9;color:#2e7d32}
+.rand0{background:#ffd6e7;color:#c44569}
+.rand1{background:#d1f2eb;color:#138496}
+.rand2{background:#e8daef;color:#884ea0}
+.rand3{background:#f9e4d4;color:#e67e22}
+.rand4{background:#d5e8d4;color:#2e7d32}
+.diff{background:#fff3cd;outline:2px solid #ffc107}
+.editing{background:#fffbe6;font-weight:600}
+
+@media print{
+  /* ---------- 关键：让打印内容刚好撑满一页，避免空白第二页 ---------- */
+  html,body{width:100%;height:100%;margin:0;padding:0;overflow:hidden;}
+  body{display:block;}
+
+  @page{margin:12mm;size:A4 landscape}
+  .card{box-shadow:none;padding:0;margin:0;border-radius:0}
+  .toolbar{display:none}
+  #title{font-size:22px;margin-bottom:12px}
+  table{font-size:13px;letter-spacing:normal}
+  th,td{padding:10px 8px;border-color:#bbb}
+  thead{background:#555!important;color:#fff!important;-webkit-print-color-adjust:exact;color-adjust:exact}
+  tbody tr:nth-child(even){background:#f6f8fa;-webkit-print-color-adjust:exact;color-adjust:exact}
+  .diff{background:#fffbe6!important;outline:none;-webkit-print-color-adjust:exact;color-adjust:exact}
+  tr{page-break-inside:avoid}
+}
+</style>
+</head>
+<body>
+
+<div class="card">
+  <h2 id="title" onclick="editTitle()">单双周合并课程表</h2>
+
+  <div class="toolbar">
+    <div class="rowCtrl">
+      <button onclick="addRow()">+ 行</button>
+      <button onclick="delRow()">– 行</button>
+    </div>
+    <div>
+      <button class="fileBtn" onclick="exportJSON()">导出数据</button>
+      <button class="fileBtn" onclick="importJSON()">导入数据</button>
+    </div>
+    <div class="btn-bar">
+      <button id="printBtn" onclick="printWarn()">打印</button>
+      <button id="pdfBtn" onclick="printWarn()">导出PDF</button>
+    </div>
+  </div>
+
+  <table id="schedule">
+    <thead>
+      <tr><th>节次</th><th>星期一</th><th>星期二</th><th>星期三</th><th>星期四</th><th>星期五</th></tr>
+    </thead>
+    <tbody id="tbody"></tbody>
+  </table>
+
+  <p id="printTip" style="margin:12px 0 0;font-size:13px;color:#e67e22;display:none">
+    请确认「打印对话框 → 更多设置 → 背景图形」已勾选，否则颜色可能丢失！
+  </p>
+</div>
+
+<script>
+/* ---------- 初始数据 ---------- */
+let single = [
+  ["上午","","","","",""],
+  ["1","语文","语文","语文","语文","数学"],
+  ["2","数学","数学","英语","数学","语文"],
+  ["3","体育","体育","体育","语文","语文"],
+  ["4","美术","劳动","班会","班会","体育"],
+  ["下午","","","","",""],
+  ["5","美术","体育","生命心理","道德法治","道德法治"],
+  ["6","美术","英语","道德法治","科学","躲避球"],
+  ["7","运动","英语","数学","语文","躲避球"],
+  ["8","数学","创客","语文","语文","语文"]
+];
+let double = [
+  ["上午","","","","",""],
+  ["1","语文","语文","语文","语文","数学"],
+  ["2","数学","数学","英语","数学","语文"],
+  ["3","体育","体育","体育","语文","语文"],
+  ["4","美术","劳动","班会","班会","体育"],
+  ["下午","","","","",""],
+  ["5","美术","体育","体育","语文","语文"],
+  ["6","美术","英语","科学","科学","篮球"],
+  ["7","运动","英语","科学","语文","篮球"],
+  ["8","数学","美术","语文","语文","语文"]
+];
+
+/* ---------- 学科映射 & 随机色 ---------- */
+const baseMap={
+  '语文':'yu','数学':'shu','英语':'ying','体育':'ti','美术':'mei',
+  '劳动':'lao','班会':'ban','道德法治':'dao','科学':'ke',
+  '生命心理':'sheng','躲避球':'duo','篮球':'lan','运动':'yun','创客':'chuang'
+};
+const randPool=['rand0','rand1','rand2','rand3','rand4'];
+let userMap={};
+
+function cls(s){
+  if(!s) return '';
+  if(baseMap[s]) return baseMap[s];
+  if(!userMap[s]){
+    userMap[s]=randPool[Object.keys(userMap).length % randPool.length];
+  }
+  return userMap[s];
+}
+
+/* ---------- 渲染 ---------- */
+function render(){
+  const tb=document.getElementById('tbody');
+  tb.innerHTML='';
+  single.forEach((row,r)=>{
+    const tr=tb.insertRow();
+    row.forEach((cell,c)=>{
+      const td=tr.insertCell();
+      if(c===0){
+        td.className='period';
+        td.textContent=single[r][0];
+        td.contentEditable=false;
+      }else{
+        const s=single[r][c], d=double[r][c];
+        if(s===d){
+          td.innerHTML=`<span class="${cls(s)}">${s}</span>`;
+        }else{
+          td.innerHTML=`<div class="diff">${wrap(s)}<br>${wrap(d)}</div>`;
+          td.classList.add('diff');
+        }
+        td.contentEditable=true;
+        td.addEventListener('dblclick',edit);
+        td.addEventListener('blur',save);
+      }
+    });
+  });
+}
+
+function wrap(txt){
+  return `<span class="${cls(txt)}">${txt}</span>`;
+}
+
+/* ---------- 标题编辑 ---------- */
+function editTitle(){
+  const t=document.getElementById('title');
+  t.contentEditable=true;
+  t.focus();
+  window.getSelection().selectAllChildren(t);
+  t.addEventListener('blur',()=>{
+    t.contentEditable=false;
+    autoSave();
+  },{once:true});
+}
+
+/* ---------- 单元格编辑 ---------- */
+function edit(e){
+  const td=e.currentTarget;
+  td.classList.add('editing');
+  td.innerText=td.innerText;
+  td.focus();
+  window.getSelection().selectAllChildren(td);
+}
+function save(e){
+  const td=e.currentTarget;
+  td.classList.remove('editing');
+  const txt=td.innerText.trim();
+  if(txt.includes('\n')){
+    td.classList.add('diff');
+    const parts=txt.split('\n').map(p=>wrap(p.trim())).join('<br>');
+    td.innerHTML=`<div class="diff">${parts}</div>`;
+  }else{
+    td.classList.remove('diff');
+    td.innerHTML=wrap(txt);
+  }
+  updateRawData();
+  autoSave();
+}
+
+/* ---------- 把用户改完的内容写回 single / double ---------- */
+function updateRawData(){
+  const trs=document.querySelectorAll('#tbody tr');
+  trs.forEach((tr,r)=>{
+    const tds=tr.querySelectorAll('td');
+    tds.forEach((td,c)=>{
+      if(c===0) return;
+      const spans=td.querySelectorAll('span');
+      if(spans.length===1){
+        single[r][c]=double[r][c]=spans[0].textContent;
+      }else if(spans.length===2){
+        single[r][c]=spans[0].textContent;
+        double[r][c]=spans[1].textContent;
+      }
+    });
+  });
+}
+
+/* ---------- 增删行 ---------- */
+function addRow(){
+  const idx=prompt("插入位置（0~当前行数，空=最后）：");
+  let pos=idx===""?single.length:(parseInt(idx)||0);
+  if(pos<0)pos=0;if(pos>single.length)pos=single.length;
+  const newNo=prompt("新节次名称（如 9、晚修）：")||"新节";
+  const empty=["","","","",""];
+  single.splice(pos,0,[newNo,...empty]);
+  double.splice(pos,0,[newNo,...empty]);
+  render();
+  autoSave();
+}
+function delRow(){
+  const idx=prompt("删除第几行（从1起，不计上午/下午标题）：");
+  let pos=(parseInt(idx)||0)-1;
+  if(pos<0||pos>=single.length){alert("超出范围");return;}
+  if(/上午|下午/.test(single[pos][0])){alert("不能删除标题");return;}
+  if(confirm("确定删除？")){single.splice(pos,1);double.splice(pos,1);render();autoSave();}
+}
+
+/* ---------- 自动保存 / 自动读取 ---------- */
+function autoSave(){
+  const data={title:document.getElementById('title').textContent,single,double,userMap};
+  localStorage.setItem('scheduleAutoSave',JSON.stringify(data));
+}
+function autoLoad(){
+  const raw=localStorage.getItem('scheduleAutoSave');
+  if(!raw) return;
+  try{
+    const data=JSON.parse(raw);
+    if(data.single && data.double){
+      single=data.single;
+      double=data.double;
+      if(data.userMap) userMap=data.userMap;
+      if(data.title) document.getElementById('title').textContent=data.title;
+      render();
+    }
+  }catch(e){console.error('autoLoad error',e);}
+}
+
+/* ---------- 导出 / 导入 ---------- */
+function exportJSON(){
+  updateRawData();
+  const data={title:document.getElementById('title').textContent,single,double,userMap};
+  const blob=new Blob([JSON.stringify(data,null,2)],{type:'application/json'});
+  const url=URL.createObjectURL(blob);
+  const a=document.createElement('a');a.href=url;a.download='课程表.json';a.click();
+  URL.revokeObjectURL(url);
+}
+function importJSON(){
+  const inp=document.createElement('input');
+  inp.type='file';inp.accept='.json';
+  inp.onchange=e=>{
+    const file=e.target.files[0];if(!file)return;
+    const reader=new FileReader();
+    reader.onload=ev=>{
+      try{
+        const data=JSON.parse(ev.target.result);
+        if(data.single&&data.double){
+          single=data.single;
+          double=data.double;
+          if(data.userMap) userMap=data.userMap;
+          if(data.title) document.getElementById('title').textContent=data.title;
+          render();
+          autoSave();
+          alert('导入成功！');
+        }else{alert('文件格式错误！');}
+      }catch{alert('JSON 解析失败！');}
+    };
+    reader.readAsText(file);
+  };
+  inp.click();
+}
+
+/* ---------- 打印提醒 ---------- */
+function printWarn(){
+  const tip=document.getElementById('printTip');
+  tip.style.display='block';
+  setTimeout(()=>{window.print();tip.style.display='none';},50);
+}
+
+/* ---------- 页面加载时先读自动保存 ---------- */
+autoLoad();
+</script>
+</body>
+</html>
